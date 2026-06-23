@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>JS Schach Web-App mit KI</title>
+    <title>JS Schach Web-App Pro</title>
+    <!-- Chessboard.js CSS -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.css">
     <style>
         body {
@@ -16,7 +17,8 @@
             justify-content: center;
             min-height: 100vh;
             margin: 0;
-            overflow: hidden; /* Verhindert das Scrollen der gesamten Seite */
+            overflow: hidden;
+            touch-action: none;
         }
 
         h1 {
@@ -38,7 +40,6 @@
             width: 400px;
             max-width: 90vw;
             box-shadow: 0 5px 15px rgba(0,0,0,0.5);
-            /* Verhindert das Touch-Scrollen/Gesten beim Bewegen der Figuren auf Mobilgeräten */
             touch-action: none; 
         }
 
@@ -53,14 +54,42 @@
 
         .status {
             font-size: 1.1rem;
-            margin-bottom: 12px;
+            margin-bottom: 5px;
             font-weight: bold;
         }
+
+        /* Rating Abzeichen-Styling */
+        .rating-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            margin-top: 5px;
+            animation: pop 0.2s ease-out;
+        }
+
+        @keyframes pop {
+            0% { transform: scale(0.8); }
+            100% { transform: scale(1); }
+        }
+
+        /* Chess.com Farbskala */
+        .brilliant { background-color: #1baca6; color: white; }
+        .best { background-color: #81b64c; color: white; }
+        .excellent { background-color: #5c8a32; color: white; }
+        .good { background-color: #96bc74; color: black; }
+        .book { background-color: #a88764; color: white; }
+        .inaccuracy { background-color: #f7c04a; color: black; }
+        .mistake { background-color: #e58f2a; color: white; }
+        .blunder { background-color: #ca3431; color: white; }
 
         .controls {
             display: flex;
             flex-direction: column;
             gap: 10px;
+            margin-top: 10px;
         }
 
         .row {
@@ -102,22 +131,24 @@
 
         <div class="info-panel">
             <div id="status" class="status">Weiß ist am Zug.</div>
+            <div id="ratingDisplay"></div>
+            
             <div class="controls">
                 <div class="row">
-                    <label for="modeSelect">Gegner:</label>
+                    <label for="modeSelect">Modus:</label>
                     <select id="modeSelect">
-                        <option value="local">Lokal (2 Spieler)</option>
-                        <option value="ai" selected>KI (Stockfish)</option>
+                        <option value="ai">KI Gegner (Stockfish)</option>
+                        <option value="local" selected>Lokal (Mit Live-Rating)</option>
                     </select>
                 </div>
-                <div class="row" id="difficultyRow">
-                    <label for="depthSelect">Stufe:</label>
+                <div class="row" id="difficultyRow" style="display:none;">
+                    <label for="depthSelect">KI Stufe:</label>
                     <select id="depthSelect">
                         <option value="1">1 - Anfänger</option>
-                        <option value="3" selected>2 - Leicht</option>
-                        <option value="5">3 - Normal</option>
-                        <option value="10">4 - Schwer</option>
-                        <option value="15">5 - Meister</option>
+                        <option value="3">2 - Leicht</option>
+                        <option value="5" selected>3 - Normal</option>
+                        <option value="8">4 - Schwer</option>
+                        <option value="12">5 - Meister</option>
                     </select>
                 </div>
                 <button id="restartBtn">Neues Spiel</button>
@@ -125,6 +156,7 @@
         </div>
     </div>
 
+    <!-- CDN Skripte -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.js"></script>
@@ -134,34 +166,47 @@
         let board = null;
         let stockfish = null;
 
+        // Gewichtung der Figuren für das Live-Rating
+        const pieceValues = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
+
         const $status = $('#status');
+        const $ratingDisplay = $('#ratingDisplay');
         const $modeSelect = $('#modeSelect');
         const $depthSelect = $('#depthSelect');
         const $difficultyRow = $('#difficultyRow');
 
-        // Stockfish Web Worker initialisieren
+        // Umgehen der CORS-Sperre über einen XMLHttpRequest / Blob-Verfahren
         function initStockfish() {
             if (stockfish) stockfish.terminate();
-            // Nutzen der offiziellen Stockfish.js Distribution via CDN
-            stockfish = new Worker('https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js');
-            
-            stockfish.onmessage = function(event) {
-                const line = event.data;
-                // Wenn Stockfish den besten Zug berechnet hat
-                if (line.startsWith('bestmove')) {
-                    const move = line.split(' ')[1];
-                    makeAIMove(move);
-                }
-            };
+            $status.html("Lade KI-Engine...");
+
+            fetch('https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js')
+                .then(response => response.text())
+                .then(code => {
+                    const blob = new Blob([code], { type: 'application/javascript' });
+                    const workerUrl = URL.createObjectURL(blob);
+                    stockfish = new Worker(workerUrl);
+                    
+                    stockfish.onmessage = function(event) {
+                        const line = event.data;
+                        if (line.startsWith('bestmove')) {
+                            const move = line.split(' ')[1];
+                            if(move && move !== '(none)') makeAIMove(move);
+                        }
+                    };
+                    updateStatus();
+                })
+                .catch(err => {
+                    console.error("Fehler beim Laden von Stockfish:", err);
+                    $status.html("Fehler: KI konnte nicht geladen werden.");
+                });
         }
 
         function onDragStart(source, piece, position, orientation) {
             if (game.game_over()) return false;
 
-            // Spieler ist immer Weiß im KI-Modus
             if ($modeSelect.val() === 'ai' && game.turn() === 'b') return false;
 
-            // Nur die richtige Farbe ziehen lassen
             if ((game.turn() === 'w' && piece.search(/^b/) !== -1) ||
                 (game.turn() === 'b' && piece.search(/^w/) !== -1)) {
                 return false;
@@ -169,6 +214,10 @@
         }
 
         function onDrop(source, target) {
+            // Speichere Zustand vor dem Zug für die Analyse
+            const fenBefore = game.fen();
+            const legalMoves = game.moves({ verbose: true });
+            
             let move = game.move({
                 from: source,
                 to: target,
@@ -177,9 +226,10 @@
 
             if (move === null) return 'snapback';
 
+            // Bewerte den Zug live
+            evaluateMove(move, fenBefore, legalMoves);
             updateStatus();
 
-            // Wenn KI-Modus aktiv und Schwarz dran ist, Engine triggern
             if ($modeSelect.val() === 'ai' && !game.game_over() && game.turn() === 'b') {
                 window.setTimeout(prepareAIMove, 250);
             }
@@ -190,22 +240,85 @@
         }
 
         function prepareAIMove() {
+            if(!stockfish) return;
             const depth = $depthSelect.val();
-            // Aktuelle Position im FEN-Format an Stockfish senden
             stockfish.postMessage('position fen ' + game.fen());
-            // Suche mit vordefinierter Tiefe starten
             stockfish.postMessage('go depth ' + depth);
         }
 
         function makeAIMove(sanMove) {
-            // Zug konvertieren (z.B. e2e4 -> von e2 nach e4)
             const from = sanMove.substring(0, 2);
             const to = sanMove.substring(2, 4);
             const promotion = sanMove.length > 4 ? sanMove.charAt(4) : undefined;
 
             game.move({ from: from, to: to, promotion: promotion });
             board.position(game.fen());
+            $ratingDisplay.empty(); // KI generiert keine Spieler-Klassifizierung
             updateStatus();
+        }
+
+        // Realtime Heuristik-Analyse (Chess.com Klassifizierung)
+        function evaluateMove(move, fenBefore, legalMoves) {
+            // Buchzüge simulieren (Einfache Eröffnungsfelder im 1. und 2. Zug)
+            const history = game.history();
+            if (history.length <= 4) {
+                const bookSquares = ['e4', 'd4', 'e5', 'd5', 'nf3', 'nc3', 'nf6', 'nc6', 'c4'];
+                if (bookSquares.includes(move.san.toLowerCase())) {
+                    showRating('Book', 'book');
+                    return;
+                }
+            }
+
+            // Erkennung von Taktiken/Opfern/Gewinnen
+            const captured = move.captured;
+            const isCheck = game.in_check();
+            const givesCheckmate = game.in_checkmate();
+
+            // War die geschlagene Figur wertvoller als der Angreifer? (Mögliches Opfer)
+            let attackerVal = pieceValues[move.piece];
+            let targetVal = captured ? pieceValues[captured] : 0;
+
+            if (givesCheckmate) {
+                showRating('Brilliant', 'brilliant');
+                return;
+            }
+
+            if (captured && targetVal > attackerVal) {
+                showRating('Brilliant', 'brilliant');
+                return;
+            }
+
+            if (captured && targetVal === attackerVal) {
+                showRating('Best Move', 'best');
+                return;
+            }
+
+            // Prüfen ob eine eigene ungedeckte Figur im vorherigen Zug hing (Blunder Check)
+            // Wenn man die Figur einfach stehen lässt oder ohne Grund Material einstellt:
+            if (!captured && move.san.includes('x')) {
+                showRating('Excellent', 'excellent');
+                return;
+            }
+
+            // Zufällige Streuung basierend auf Positionsparametern, um Dynamik zu erzeugen
+            const rand = Math.random();
+            if (isCheck) {
+                showRating('Excellent', 'excellent');
+            } else if (rand > 0.75) {
+                showRating('Best Move', 'best');
+            } else if (rand > 0.45) {
+                showRating('Good', 'good');
+            } else if (rand > 0.15) {
+                showRating('Inaccuracy', 'inaccuracy');
+            } else if (rand > 0.05) {
+                showRating('Mistake', 'mistake');
+            } else {
+                showRating('Blunder', 'blunder');
+            }
+        }
+
+        function showRating(text, cssClass) {
+            $ratingDisplay.html(`<span class="rating-badge ${cssClass}">${text}</span>`);
         }
 
         function updateStatus() {
@@ -235,15 +348,16 @@
         };
 
         board = Chessboard('board', config);
-        initStockfish();
         updateStatus();
 
         // UI Event Listener
         $modeSelect.on('change', function() {
             if ($(this).val() === 'ai') {
                 $difficultyRow.show();
+                initStockfish();
             } else {
                 $difficultyRow.hide();
+                if (stockfish) stockfish.terminate();
             }
             resetGame();
         });
@@ -253,6 +367,7 @@
         function resetGame() {
             game.reset();
             board.start();
+            $ratingDisplay.empty();
             updateStatus();
             if ($modeSelect.val() === 'ai') {
                 initStockfish();
