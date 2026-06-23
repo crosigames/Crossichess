@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chess Next - Vs Computer</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.css">
+    <style>
+        :root {
+            --bg-dark: #121212;
+            --bg-surface: #1e1e1e;
+            --bg-modifier: #2a2a2a;
+            --primary: #81b64c;
+            --primary-hover: #a3d96c;
+            --text-main: #ffffff;
+            --text-muted: #bababa;
+            --border: #333333;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .game-container {
+            display: flex;
+            max-width: 1100px;
+            width: 100%;
+            gap: 30px;
+            background-color: var(--bg-surface);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+        }
+
+        /* Left Side: Board & Info */
+        .board-container {
+            flex: 1 1 600px;
+            max-width: 600px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .player-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            padding: 5px 0;
+        }
+
+        #board {
+            width: 100%;
+            border-radius: 4px;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+        }
+
+        /* Right Side: Control Panel & German Chat */
+        .panel-container {
+            flex: 1 1 400px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            border-left: 1px solid var(--border);
+            padding-left: 20px;
+        }
+
+        .engine-settings {
+            background-color: var(--bg-modifier);
+            padding: 15px;
+            border-radius: 8px;
+        }
+
+        .engine-settings h3 {
+            margin-bottom: 10px;
+            font-size: 1.1rem;
+        }
+
+        select {
+            width: 100%;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            border: 1px solid var(--border);
+            padding: 8px;
+            border-radius: 4px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .chat-area {
+            flex-grow: 1;
+            background-color: var(--bg-dark);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            height: 300px;
+        }
+
+        .chat-messages {
+            flex-grow: 1;
+            padding: 15px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            font-size: 0.95rem;
+        }
+
+        .message {
+            padding: 8px 12px;
+            border-radius: 6px;
+            max-width: 85%;
+            line-height: 1.4;
+        }
+
+        .message.bot {
+            background-color: var(--bg-modifier);
+            color: var(--text-main);
+            align-self: flex-start;
+        }
+
+        .message.system {
+            background-color: rgba(129, 182, 76, 0.1);
+            color: var(--primary-hover);
+            align-self: center;
+            font-size: 0.85rem;
+            text-align: center;
+        }
+
+        .btn-action {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 6px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background 0.2s;
+            text-align: center;
+            text-decoration: none;
+        }
+
+        .btn-action:hover {
+            background-color: var(--primary-hover);
+        }
+
+        /* Gate Protect */
+        .gate-screen {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background-color: var(--bg-dark);
+            display: flex; justify-content: center; align-items: center;
+            z-index: 9999;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="gate" class="gate-screen">
+        <h2>Loading engine session...</h2>
+    </div>
+
+    <div class="game-container">
+        <div class="board-container">
+            <div class="player-info">🤖 Bot Stockfish (<span id="bot-elo">Level 1</span>)</div>
+            <div id="board"></div>
+            <div class="player-info">👤 <span id="user-name">You</span></div>
+        </div>
+
+        <div class="panel-container">
+            <div class="engine-settings">
+                <h3>Bot Difficulty</h3>
+                <select id="difficulty-select">
+                    <option value="1">Level 1 (Elo 800) - Anfänger</option>
+                    <option value="3">Level 2 (Elo 1200) - Fortgeschritten</option>
+                    <option value="5">Level 3 (Elo 1600) - Erfahren</option>
+                    <option value="10">Level 4 (Elo 2000) - Meister</option>
+                </select>
+            </div>
+
+            <div class="chat-area">
+                <div id="chat-box" class="chat-messages">
+                    <div class="message bot">Hallo! Viel Glück bei unserem Spiel. Lass uns sehen, was du drauf hast!</div>
+                </div>
+            </div>
+
+            <button id="restart-btn" class="btn-action">New Game</button>
+            <a href="menu.html" class="btn-action" style="background-color: var(--bg-modifier);">Back to Menu</a>
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.js"></script>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyCFOE6l-jR90YJBVwWqEF5d22UQ6S13dBQ",
+            authDomain: "crossichess.firebaseapp.com",
+            projectId: "crossichess",
+            storageBucket: "crossichess.firebasestorage.app",
+            messagingSenderId: "86230015962",
+            appId: "1:86230015962:web:e499c0c0a757ff0eea6ae3",
+            measurementId: "G-EGBDX8R4W7"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+
+        let board = null;
+        const game = new Chess();
+        
+        // Stockfish Engine via OpenSource CDN WebWorker initialisieren
+        const stockfish = new Worker('https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js');
+
+        const chatBox = document.getElementById('chat-box');
+        const diffSelect = document.getElementById('difficulty-select');
+
+        // Phrasen für den deutschen Bot-Chat
+        const botReplies = [
+            "Guter Zug! Da muss ich kurz nachdenken.",
+            "Interessante Taktik, mal sehen ob das klappt.",
+            "Uff, den Zug habe ich nicht direkt kommen sehen!",
+            "Ein solider Aufbau von dir.",
+            "Schach ist ein Spiel der Geduld..."
+        ];
+
+        onAuthStateChanged(auth, (user) => {
+            if (!user) {
+                window.location.href = "index.html";
+            } else {
+                document.getElementById('user-name').textContent = user.displayName || "You";
+                document.getElementById('gate').style.display = 'none';
+                initChess();
+            }
+        });
+
+        function appendChatMessage(sender, text) {
+            const msg = document.createElement('div');
+            msg.className = `message ${sender}`;
+            msg.textContent = text;
+            chatBox.appendChild(msg);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        // Logik für Stockfish-Antworten abfangen
+        stockfish.onmessage = function(event) {
+            const line = event.data;
+            if (line.indexOf('bestmove') > -1) {
+                const match = line.match(/^bestmove\s([a-h][1-8])([a-h][1-8])([qrbn])?/);
+                if (match) {
+                    game.move({
+                        from: match[1],
+                        to: match[2],
+                        promotion: match[3] || 'q'
+                    });
+                    board.position(game.fen());
+                    checkGameStatus();
+
+                    // Gelegentlicher Bot-Kommentar auf Deutsch
+                    if (Math.random() < 0.4 && !game.game_over()) {
+                        const randomQuote = botReplies[Math.floor(Math.random() * botReplies.length)];
+                        appendChatMessage('bot', randomQuote);
+                    }
+                }
+            }
+        };
+
+        function askStockfish() {
+            if (game.game_over()) return;
+
+            const depth = diffSelect.value;
+            stockfish.postMessage('position fen ' + game.fen());
+            stockfish.postMessage('go depth ' + depth);
+        }
+
+        function checkGameStatus() {
+            if (game.in_checkmate()) {
+                appendChatMessage('system', "Spiel beendet: Schachmatt!");
+            } else if (game.in_draw() || game.in_stalemate() || game.in_threefold_repetition()) {
+                appendChatMessage('system', "Spiel beendet: Unentschieden (Remis/Patt).");
+            } else if (game.turn() === 'b') {
+                // Wenn Schwarz (Bot) am Zug ist, Engine triggern
+                setTimeout(askStockfish, 250);
+            }
+        }
+
+        // Drag & Drop Validierung
+        function onDragStart(source, piece, position, orientation) {
+            if (game.game_over() || game.turn() === 'b' || piece.search(/^b/) !== -1) {
+                return false;
+            }
+        }
+
+        function onDrop(source, target) {
+            const move = game.move({
+                from: source,
+                to: target,
+                promotion: 'q' // Automatisch Dame bei Bauernumwandlung für Vereinfachung
+            });
+
+            if (move === null) return 'snapback';
+
+            board.position(game.fen());
+            checkGameStatus();
+        }
+
+        function onSnapEnd() {
+            board.position(game.fen());
+        }
+
+        function initChess() {
+            const config = {
+                draggable: true,
+                position: 'start',
+                onDragStart: onDragStart,
+                onDrop: onDrop,
+                onSnapEnd: onSnapEnd,
+                pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png'
+            };
+            board = Chessboard('board', config);
+        }
+
+        // Event Listener
+        document.getElementById('restart-btn').addEventListener('click', () => {
+            game.reset();
+            board.start();
+            chatBox.innerHTML = '<div class="message bot">Neues Spiel, neues Glück! Du fängst an.</div>';
+        });
+
+        diffSelect.addEventListener('change', () => {
+            document.getElementById('bot-elo').textContent = "Level " + diffSelect.value;
+        });
+    </script>
+</body>
+</html>
