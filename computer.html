@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Chess Next - Vs Computer</title>
-    <!-- Chessboard.js CSS -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.css">
     <style>
         :root {
@@ -214,14 +213,12 @@
     </div>
 
     <div class="game-container">
-        <!-- Chess Board Panel -->
         <div class="board-container">
             <div class="player-info">🤖 Bot Stockfish (<span id="bot-elo">Elo 400</span>)</div>
             <div id="board"></div>
             <div class="player-info">👤 <span id="user-name">You</span></div>
         </div>
 
-        <!-- System & Chat Panel (100% English) -->
         <div class="panel-container">
             <div class="engine-settings">
                 <h3>Bot Difficulty</h3>
@@ -233,7 +230,6 @@
                 </select>
             </div>
 
-            <!-- English Chat Window -->
             <div class="chat-area">
                 <div id="chat-box" class="chat-messages">
                     <div class="message bot">Hello! Good luck with our match. Let's see what you've got!</div>
@@ -245,7 +241,6 @@
         </div>
     </div>
 
-    <!-- Dependencies -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.js"></script>
@@ -273,7 +268,6 @@
         const chatBox = document.getElementById('chat-box');
         const diffSelect = document.getElementById('difficulty-select');
 
-        // English Bot Chats
         const botReplies = [
             "Good move! Let me analyze this.",
             "Interesting tactics, let's see if that works.",
@@ -306,47 +300,68 @@
             chatBox.scrollTop = chatBox.scrollHeight;
         }
 
-        // Neue API basierte Stockfish Methode für absolute Mobilkompatibilität
-        async function askStockfishAPI() {
+        // Extrem stabile, iOS-kompatible API-Anbindung über Lichess Cloud Engine
+        async function askEngineAPI() {
             if (game.game_over()) return;
 
-            const elo = diffSelect.value;
             const fen = encodeURIComponent(game.fen());
-            
-            // Verwende die offizielle, stabile Stockfish Online API v2
-            const url = `https://stockfish.online/api/s/v2.php?fen=${fen}&elo=${elo}`;
+            const url = `https://lichess.org/api/cloud-eval?fen=${fen}`;
 
             try {
                 const response = await fetch(url);
                 const data = await response.json();
 
-                if (data && data.success && data.bestmove) {
-                    // Extrahiere den reinen Move-String (z.B. "bestmove e2e4 ...")
-                    const moveParts = data.bestmove.split(' ');
-                    const bestMove = moveParts[1]; 
-                    
-                    if (bestMove) {
-                        const from = bestMove.substring(0, 2);
-                        const to = bestMove.substring(2, 4);
-                        const promotion = bestMove.substring(4, 5) || 'q';
-
-                        game.move({
-                            from: from,
-                            to: to,
-                            promotion: promotion
-                        });
-
-                        board.position(game.fen());
-                        checkGameStatus();
-
-                        if (Math.random() < 0.3 && !game.game_over()) {
-                            const randomQuote = botReplies[Math.floor(Math.random() * botReplies.length)];
-                            appendChatMessage('bot', randomQuote);
-                        }
-                    }
+                // Falls Lichess die Position kennt, nehmen wir den Top-Move
+                if (data && data.pvs && data.pvs[0] && data.pvs[0].moves) {
+                    const bestMoveRaw = data.pvs[0].moves.split(' ')[0];
+                    executeMove(bestMoveRaw);
+                } else {
+                    // Fallback-API falls die Position extrem tief im Endgame/unbekannt ist
+                    fallbackStockfishAPI();
                 }
             } catch (error) {
-                console.error("API Stockfish Request Error:", error);
+                fallbackStockfishAPI();
+            }
+        }
+
+        async function fallbackStockfishAPI() {
+            const fen = encodeURIComponent(game.fen());
+            // Korrigierter API-Pfad für Stockfish.online
+            const url = `https://stockfish.online/api/stockfish.php?fen=${fen}&depth=5&mode=bestmove`;
+
+            try {
+                const response = await fetch(url);
+                const textData = await response.text();
+                
+                // Extrahiere "bestmove xxxx" aus dem Plaintext
+                if (textData.includes('bestmove')) {
+                    const match = textData.match(/bestmove\s([a-h][1-8][a-h][1-8][qrbn]?)/);
+                    if (match && match[1]) {
+                        executeMove(match[1]);
+                    }
+                }
+            } catch (e) {
+                console.error("All engines failed", e);
+            }
+        }
+
+        function executeMove(moveStr) {
+            const from = moveStr.substring(0, 2);
+            const to = moveStr.substring(2, 4);
+            const promotion = moveStr.substring(4, 5) || 'q';
+
+            game.move({
+                from: from,
+                to: to,
+                promotion: promotion
+            });
+
+            board.position(game.fen());
+            checkGameStatus();
+
+            if (Math.random() < 0.3 && !game.game_over()) {
+                const randomQuote = botReplies[Math.floor(Math.random() * botReplies.length)];
+                appendChatMessage('bot', randomQuote);
             }
         }
 
@@ -356,8 +371,8 @@
             } else if (game.in_draw() || game.in_stalemate() || game.in_threefold_repetition()) {
                 appendChatMessage('system', "Game Over: Draw!");
             } else if (game.turn() === 'b') {
-                // Wenn der Bot dran ist, API abfragen
-                askStockfishAPI();
+                // Sofort triggern ohne künstliche Verzögerung, um Timeouts zu vermeiden
+                askEngineAPI();
             }
         }
 
