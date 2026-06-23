@@ -25,7 +25,6 @@
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
         }
 
-        /* Prevent scrolling & bounce effects on iOS when dragging pieces */
         html, body {
             background-color: var(--bg-dark);
             color: var(--text-main);
@@ -54,7 +53,6 @@
             overflow: hidden;
         }
 
-        /* Left Side: Board & Info */
         .board-container {
             flex: 1 1 550px;
             max-width: 550px;
@@ -78,13 +76,11 @@
             border-radius: 4px;
             overflow: hidden;
             box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-            /* Vital iOS fix for chessboard touch-drag conflict */
             touch-action: none;
             -webkit-user-select: none;
             user-select: none;
         }
 
-        /* Right Side: Control Panel & German Chat */
         .panel-container {
             flex: 1 1 350px;
             display: flex;
@@ -136,7 +132,7 @@
             flex-direction: column;
             gap: 8px;
             font-size: 0.9rem;
-            touch-action: pan-y; /* Allow scrolling inside chat only */
+            touch-action: pan-y;
         }
 
         .message {
@@ -177,7 +173,6 @@
             background-color: var(--primary-hover);
         }
 
-        /* Responsive Mobile Layout */
         @media (max-width: 768px) {
             body {
                 overflow: hidden;
@@ -221,27 +216,27 @@
     <div class="game-container">
         <!-- Chess Board Panel -->
         <div class="board-container">
-            <div class="player-info">🤖 Bot Stockfish (<span id="bot-elo">Level 1</span>)</div>
+            <div class="player-info">🤖 Bot Stockfish (<span id="bot-elo">Elo 400</span>)</div>
             <div id="board"></div>
             <div class="player-info">👤 <span id="user-name">You</span></div>
         </div>
 
-        <!-- System & Chat Panel (UI English, Chat Logs German) -->
+        <!-- System & Chat Panel (100% English) -->
         <div class="panel-container">
             <div class="engine-settings">
                 <h3>Bot Difficulty</h3>
                 <select id="difficulty-select">
-                    <option value="1">Level 1 (Elo 800) - Beginner</option>
-                    <option value="2">Level 2 (Elo 1200) - Intermediate</option>
-                    <option value="3">Level 3 (Elo 1600) - Advanced</option>
-                    <option value="4">Level 4 (Elo 2000) - Master</option>
+                    <option value="400">Level 1 (Elo 400) - Beginner</option>
+                    <option value="1000">Level 2 (Elo 1000) - Intermediate</option>
+                    <option value="1500">Level 3 (Elo 1500) - Advanced</option>
+                    <option value="2000">Level 4 (Elo 2000) - Master</option>
                 </select>
             </div>
 
-            <!-- German Chat Window -->
+            <!-- English Chat Window -->
             <div class="chat-area">
                 <div id="chat-box" class="chat-messages">
-                    <div class="message bot">Hallo! Viel Glück bei unserem Spiel. Lass uns sehen, was du drauf hast!</div>
+                    <div class="message bot">Hello! Good luck with our match. Let's see what you've got!</div>
                 </div>
             </div>
 
@@ -274,20 +269,19 @@
 
         let board = null;
         const game = new Chess();
-        let stockfish = null;
 
         const chatBox = document.getElementById('chat-box');
         const diffSelect = document.getElementById('difficulty-select');
 
+        // English Bot Chats
         const botReplies = [
-            "Guter Zug! Da muss ich kurz nachdenken.",
-            "Interessante Taktik, mal sehen ob das klappt.",
-            "Uff, den Zug habe ich nicht direkt kommen sehen!",
-            "Ein solider Aufbau von dir.",
-            "Schach ist ein Spiel der Geduld..."
+            "Good move! Let me analyze this.",
+            "Interesting tactics, let's see if that works.",
+            "Wow, I didn't see that move coming!",
+            "A very solid setup from you.",
+            "Chess is a game of patience..."
         ];
 
-        // iOS Drag-Move Prevention Rule override
         document.addEventListener('touchmove', function(e) {
             if (e.target.closest('#board')) {
                 e.preventDefault();
@@ -300,44 +294,9 @@
             } else {
                 document.getElementById('user-name').textContent = user.displayName || "You";
                 document.getElementById('gate').style.display = 'none';
-                initStockfish();
                 initChess();
             }
         });
-
-        function initStockfish() {
-            // iOS kompatibler CDN WebWorker Pfad für Stockfish
-            try {
-                stockfish = new Worker('https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js');
-                
-                stockfish.onmessage = function(event) {
-                    const line = event.data;
-                    if (line.indexOf('bestmove') > -1) {
-                        const match = line.match(/^bestmove\s([a-h][1-8])([a-h][1-8])([qrbn])?/);
-                        if (match) {
-                            game.move({
-                                from: match[1],
-                                to: match[2],
-                                promotion: match[3] || 'q'
-                            });
-                            board.position(game.fen());
-                            checkGameStatus();
-
-                            if (Math.random() < 0.3 && !game.game_over()) {
-                                const randomQuote = botReplies[Math.floor(Math.random() * botReplies.length)];
-                                appendChatMessage('bot', randomQuote);
-                            }
-                        }
-                    }
-                };
-
-                // Engine initialisieren
-                stockfish.postMessage('uci');
-                stockfish.postMessage('isready');
-            } catch (e) {
-                console.error("Stockfish Worker Init Failed: ", e);
-            }
-        }
 
         function appendChatMessage(sender, text) {
             const msg = document.createElement('div');
@@ -347,27 +306,58 @@
             chatBox.scrollTop = chatBox.scrollHeight;
         }
 
-        function askStockfish() {
-            if (game.game_over() || !stockfish) return;
+        // Neue API basierte Stockfish Methode für absolute Mobilkompatibilität
+        async function askStockfishAPI() {
+            if (game.game_over()) return;
 
-            // Berechne Suchzeit/Tiefe basierend auf Level
-            const level = parseInt(diffSelect.value);
-            let moveTime = 300; 
-            if (level === 2) moveTime = 700;
-            if (level === 3) moveTime = 1200;
-            if (level === 4) moveTime = 2000;
+            const elo = diffSelect.value;
+            const fen = encodeURIComponent(game.fen());
+            
+            // Verwende die offizielle, stabile Stockfish Online API v2
+            const url = `https://stockfish.online/api/s/v2.php?fen=${fen}&elo=${elo}`;
 
-            stockfish.postMessage('position fen ' + game.fen());
-            stockfish.postMessage('go movetime ' + moveTime);
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+
+                if (data && data.success && data.bestmove) {
+                    // Extrahiere den reinen Move-String (z.B. "bestmove e2e4 ...")
+                    const moveParts = data.bestmove.split(' ');
+                    const bestMove = moveParts[1]; 
+                    
+                    if (bestMove) {
+                        const from = bestMove.substring(0, 2);
+                        const to = bestMove.substring(2, 4);
+                        const promotion = bestMove.substring(4, 5) || 'q';
+
+                        game.move({
+                            from: from,
+                            to: to,
+                            promotion: promotion
+                        });
+
+                        board.position(game.fen());
+                        checkGameStatus();
+
+                        if (Math.random() < 0.3 && !game.game_over()) {
+                            const randomQuote = botReplies[Math.floor(Math.random() * botReplies.length)];
+                            appendChatMessage('bot', randomQuote);
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error("API Stockfish Request Error:", error);
+            }
         }
 
         function checkGameStatus() {
             if (game.in_checkmate()) {
-                appendChatMessage('system', "Spiel beendet: Schachmatt!");
+                appendChatMessage('system', "Game Over: Checkmate!");
             } else if (game.in_draw() || game.in_stalemate() || game.in_threefold_repetition()) {
-                appendChatMessage('system', "Spiel beendet: Unentschieden!");
+                appendChatMessage('system', "Game Over: Draw!");
             } else if (game.turn() === 'b') {
-                setTimeout(askStockfish, 400);
+                // Wenn der Bot dran ist, API abfragen
+                askStockfishAPI();
             }
         }
 
@@ -404,19 +394,17 @@
                 pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png'
             };
             board = Chessboard('board', config);
-            
-            // Fix responsive window resize tracking
             window.addEventListener('resize', board.resize);
         }
 
         document.getElementById('restart-btn').addEventListener('click', () => {
             game.reset();
             board.start();
-            chatBox.innerHTML = '<div class="message bot">Neues Spiel gestartet! Du bist am Zug.</div>';
+            chatBox.innerHTML = '<div class="message bot">New game started! It\'s your turn.</div>';
         });
 
         diffSelect.addEventListener('change', () => {
-            document.getElementById('bot-elo').textContent = "Level " + diffSelect.value;
+            document.getElementById('bot-elo').textContent = "Elo " + diffSelect.value;
         });
     </script>
 </body>
