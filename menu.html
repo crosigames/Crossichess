@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chess Next - Main Menu</title>
+    <style>
+        :root {
+            --bg-dark: #121212;
+            --bg-surface: #1e1e1e;
+            --bg-modifier: #2a2a2a;
+            --primary: #81b64c;
+            --primary-hover: #a3d96c;
+            --text-main: #ffffff;
+            --text-muted: #bababa;
+            --border: #333333;
+            --danger: #ff4a4a;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            display: flex;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Sidebar Navigation */
+        .sidebar {
+            width: 240px;
+            background-color: var(--bg-surface);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 1.5rem 1rem;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: var(--text-main);
+            margin-bottom: 2rem;
+            padding-left: 0.5rem;
+        }
+
+        .brand span {
+            color: var(--primary);
+        }
+
+        .nav-links {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            color: var(--text-muted);
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+
+        .nav-item:hover, .nav-item.active {
+            background-color: var(--bg-modifier);
+            color: var(--text-main);
+        }
+
+        .nav-item.active {
+            border-left: 4px solid var(--primary);
+            padding-left: 8px;
+        }
+
+        /* User Profile Footer in Sidebar */
+        .user-profile {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding-top: 1rem;
+            border-top: 1px solid var(--border);
+        }
+
+        .avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background-color: var(--bg-modifier);
+            object-fit: cover;
+        }
+
+        .user-info {
+            flex-grow: 1;
+            overflow: hidden;
+        }
+
+        .username {
+            font-size: 0.9rem;
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .btn-logout {
+            background: none;
+            border: none;
+            color: var(--danger);
+            cursor: pointer;
+            font-size: 0.8rem;
+            font-weight: 600;
+            padding: 2px 0;
+            text-align: left;
+        }
+
+        .btn-logout:hover {
+            text-decoration: underline;
+        }
+
+        /* Main Content View Area */
+        .main-content {
+            flex-grow: 1;
+            padding: 2.5rem;
+            overflow-y: auto;
+        }
+
+        .view-panel {
+            display: none;
+        }
+
+        .view-panel.active {
+            display: block;
+        }
+
+        h2 {
+            font-size: 2rem;
+            margin-bottom: 1.5rem;
+        }
+
+        /* Play Options Grid */
+        .play-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            margin-top: 1rem;
+        }
+
+        .play-card {
+            background-color: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.5rem;
+            cursor: pointer;
+            transition: transform 0.2s ease, border-color 0.2s ease;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .play-card:hover {
+            transform: translateY(-4px);
+            border-color: var(--primary);
+        }
+
+        .card-icon {
+            font-size: 2rem;
+            color: var(--primary);
+        }
+
+        .card-title {
+            font-size: 1.2rem;
+            font-weight: 700;
+        }
+
+        .card-desc {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            line-height: 1.4;
+        }
+
+        /* Protection Screen if not logged in */
+        .gate-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: var(--bg-dark);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="gate" class="gate-screen">
+        <h2>Loading your session...</h2>
+    </div>
+
+    <aside class="sidebar">
+        <div>
+            <div class="brand"><span>♞</span> Chess Next</div>
+            <ul class="nav-links">
+                <li class="nav-item active" data-target="view-play">🎮 Play</li>
+                <li class="nav-item" data-target="view-leaderboard">🏆 Leaderboard</li>
+                <li class="nav-item" data-target="view-profile">👤 Profile</li>
+            </ul>
+        </div>
+
+        <div class="user-profile">
+            <img id="user-avatar" class="avatar" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="Profile Picture">
+            <div class="user-info">
+                <div id="user-name" class="username">Loading...</div>
+                <button id="logout-btn" class="btn-logout">Sign Out</button>
+            </div>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        
+        <section id="view-play" class="view-panel active">
+            <h2>Choose Game Mode</h2>
+            <div class="play-grid">
+                <div class="play-card" id="mode-computer">
+                    <div class="card-icon">🤖</div>
+                    <div class="card-title">Vs Computer</div>
+                    <div class="card-desc">Practice against an offline chess engine tailored to your skill level.</div>
+                </div>
+                <div class="play-card" id="mode-friend">
+                    <div class="card-icon">🔗</div>
+                    <div class="card-title">Play a Friend</div>
+                    <div class="card-desc">Create a private custom lobby and share the invitation link.</div>
+                </div>
+                <div class="play-card" id="mode-online">
+                    <div class="card-icon">🌍</div>
+                    <div class="card-title">Quick Match</div>
+                    <div class="card-desc">Jump straight into rated competitive matchmaking against active players.</div>
+                </div>
+            </div>
+        </section>
+
+        <section id="view-leaderboard" class="view-panel">
+            <h2>Global Leaderboard</h2>
+            <p style="color: var(--text-muted)">The competitive matchmaking rankings will load here soon.</p>
+        </section>
+
+        <section id="view-profile" class="view-panel">
+            <h2>Your Profile</h2>
+            <p style="color: var(--text-muted)">Detailed statistics, match logs and Elo progression graphs.</p>
+        </section>
+
+    </main>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyCFOE6l-jR90YJBVwWqEF5d22UQ6S13dBQ",
+            authDomain: "crossichess.firebaseapp.com",
+            projectId: "crossichess",
+            storageBucket: "crossichess.firebasestorage.app",
+            messagingSenderId: "86230015962",
+            appId: "1:86230015962:web:e499c0c0a757ff0eea6ae3",
+            measurementId: "G-EGBDX8R4W7"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+
+        const gate = document.getElementById('gate');
+        const userNameDisp = document.getElementById('user-name');
+        const userAvatarDisp = document.getElementById('user-avatar');
+        const logoutBtn = document.getElementById('logout-btn');
+
+        // Session Protection Guard
+        onAuthStateChanged(auth, (user) => {
+            if (!user) {
+                // Nicht eingeloggt -> Zurück zur Startseite
+                window.location.href = "index.html";
+            } else {
+                // User-Daten einspeisen
+                userNameDisp.textContent = user.displayName || "ChessPlayer";
+                if (user.photoURL) {
+                    userAvatarDisp.src = user.photoURL;
+                }
+                // Ladebildschirm entfernen
+                gate.style.display = 'none';
+            }
+        });
+
+        // Tab Switch Logic
+        const navItems = document.querySelectorAll('.nav-item');
+        const viewPanels = document.querySelectorAll('.view-panel');
+
+        navItems.forEach(item => {
+            item.addEventListener('click', () => {
+                navItems.forEach(i => i.classList.remove('active'));
+                viewPanels.forEach(p => p.classList.remove('active'));
+
+                item.classList.add('active');
+                const target = item.getAttribute('data-target');
+                document.getElementById(target).classList.add('active');
+            });
+        });
+
+        // Mode Interaction Handlers (For the next phases)
+        document.getElementById('mode-computer').addEventListener('click', () => {
+            alert('Starting match vs Engine...');
+        });
+        document.getElementById('mode-friend').addEventListener('click', () => {
+            alert('Generating private lobby link...');
+        });
+        document.getElementById('mode-online').addEventListener('click', () => {
+            alert('Entering matchmaking queue...');
+        });
+
+        // Sign Out Event
+        logoutBtn.addEventListener('click', () => {
+            signOut(auth).catch((error) => console.error("Sign-out failed:", error));
+        });
+    </script>
+</body>
+</html>
