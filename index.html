@@ -2,9 +2,8 @@
 <html lang="de">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>JS Schach Web-App</title>
-    <!-- Chessboard.js CSS -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>JS Schach Web-App mit KI</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.css">
     <style>
         body {
@@ -17,24 +16,30 @@
             justify-content: center;
             min-height: 100vh;
             margin: 0;
+            overflow: hidden; /* Verhindert das Scrollen der gesamten Seite */
         }
 
         h1 {
-            margin-bottom: 10px;
+            margin: 5px 0;
             color: #f0d9b5;
+            font-size: 1.8rem;
         }
 
         .container {
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 20px;
+            gap: 15px;
+            width: 100%;
+            max-width: 450px;
         }
 
         #board {
             width: 400px;
             max-width: 90vw;
             box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+            /* Verhindert das Touch-Scrollen/Gesten beim Bewegen der Figuren auf Mobilgeräten */
+            touch-action: none; 
         }
 
         .info-panel {
@@ -42,24 +47,44 @@
             background: #2d2d2d;
             padding: 15px;
             border-radius: 8px;
-            min-width: 250px;
+            width: 85%;
+            box-sizing: border-box;
         }
 
         .status {
             font-size: 1.1rem;
-            margin-bottom: 10px;
+            margin-bottom: 12px;
             font-weight: bold;
         }
 
-        button {
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+        }
+
+        select, button {
             background-color: #b58863;
             color: white;
             border: none;
-            padding: 10px 20px;
-            font-size: 1rem;
+            padding: 8px 12px;
+            font-size: 0.95rem;
             cursor: pointer;
             border-radius: 4px;
             transition: background 0.2s;
+        }
+
+        select {
+            background-color: #404040;
+            flex-grow: 1;
+            outline: none;
         }
 
         button:hover {
@@ -71,35 +96,72 @@
 <body>
 
     <div class="container">
-        <h1>Schach</h1>
+        <h1>Schach Pro</h1>
         
-        <!-- Das Schachbrett -->
         <div id="board"></div>
 
-        <!-- Status und Steuerung -->
         <div class="info-panel">
             <div id="status" class="status">Weiß ist am Zug.</div>
-            <button id="restartBtn">Neues Spiel</button>
+            <div class="controls">
+                <div class="row">
+                    <label for="modeSelect">Gegner:</label>
+                    <select id="modeSelect">
+                        <option value="local">Lokal (2 Spieler)</option>
+                        <option value="ai" selected>KI (Stockfish)</option>
+                    </select>
+                </div>
+                <div class="row" id="difficultyRow">
+                    <label for="depthSelect">Stufe:</label>
+                    <select id="depthSelect">
+                        <option value="1">1 - Anfänger</option>
+                        <option value="3" selected>2 - Leicht</option>
+                        <option value="5">3 - Normal</option>
+                        <option value="10">4 - Schwer</option>
+                        <option value="15">5 - Meister</option>
+                    </select>
+                </div>
+                <button id="restartBtn">Neues Spiel</button>
+            </div>
         </div>
     </div>
 
-    <!-- Benötigte Skripte (jQuery, Chess.js, Chessboard.js) -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.js"></script>
 
     <script>
-        // Initialisierung der Spiel-Logik und des Bretts
         let game = new Chess();
         let board = null;
+        let stockfish = null;
 
         const $status = $('#status');
+        const $modeSelect = $('#modeSelect');
+        const $depthSelect = $('#depthSelect');
+        const $difficultyRow = $('#difficultyRow');
+
+        // Stockfish Web Worker initialisieren
+        function initStockfish() {
+            if (stockfish) stockfish.terminate();
+            // Nutzen der offiziellen Stockfish.js Distribution via CDN
+            stockfish = new Worker('https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js');
+            
+            stockfish.onmessage = function(event) {
+                const line = event.data;
+                // Wenn Stockfish den besten Zug berechnet hat
+                if (line.startsWith('bestmove')) {
+                    const move = line.split(' ')[1];
+                    makeAIMove(move);
+                }
+            };
+        }
 
         function onDragStart(source, piece, position, orientation) {
-            // Keine Züge erlauben, wenn das Spiel vorbei ist
             if (game.game_over()) return false;
 
-            // Nur die Figuren der Farbe ziehen lassen, die dran ist
+            // Spieler ist immer Weiß im KI-Modus
+            if ($modeSelect.val() === 'ai' && game.turn() === 'b') return false;
+
+            // Nur die richtige Farbe ziehen lassen
             if ((game.turn() === 'w' && piece.search(/^b/) !== -1) ||
                 (game.turn() === 'b' && piece.search(/^w/) !== -1)) {
                 return false;
@@ -107,22 +169,43 @@
         }
 
         function onDrop(source, target) {
-            // Zug in der Logik validieren
             let move = game.move({
                 from: source,
                 to: target,
-                promotion: 'q' // Automatische Umwandlung in Dame für die Einfachheit
+                promotion: 'q' 
             });
 
-            // Illegaler Zug
             if (move === null) return 'snapback';
 
             updateStatus();
+
+            // Wenn KI-Modus aktiv und Schwarz dran ist, Engine triggern
+            if ($modeSelect.val() === 'ai' && !game.game_over() && game.turn() === 'b') {
+                window.setTimeout(prepareAIMove, 250);
+            }
         }
 
         function onSnapEnd() {
-            // Aktualisiert die Position auf dem Brett (wichtig für Rochade/En Passant)
             board.position(game.fen());
+        }
+
+        function prepareAIMove() {
+            const depth = $depthSelect.val();
+            // Aktuelle Position im FEN-Format an Stockfish senden
+            stockfish.postMessage('position fen ' + game.fen());
+            // Suche mit vordefinierter Tiefe starten
+            stockfish.postMessage('go depth ' + depth);
+        }
+
+        function makeAIMove(sanMove) {
+            // Zug konvertieren (z.B. e2e4 -> von e2 nach e4)
+            const from = sanMove.substring(0, 2);
+            const to = sanMove.substring(2, 4);
+            const promotion = sanMove.length > 4 ? sanMove.charAt(4) : undefined;
+
+            game.move({ from: from, to: to, promotion: promotion });
+            board.position(game.fen());
+            updateStatus();
         }
 
         function updateStatus() {
@@ -132,18 +215,16 @@
             if (game.in_checkmate()) {
                 status = `Spiel vorbei! ${moveColor} ist im Schachmatt.`;
             } else if (game.in_draw()) {
-                status = 'Spiel vorbei! Unentschieden (Patt oder Materialmangel).';
+                status = 'Spiel vorbei! Unentschieden.';
             } else {
                 status = `${moveColor} ist am Zug.`;
                 if (game.in_check()) {
                     status += ` (${moveColor} steht im Schach!)`;
                 }
             }
-
             $status.html(status);
         }
 
-        // Konfiguration für Chessboard.js
         const config = {
             draggable: true,
             position: 'start',
@@ -154,14 +235,29 @@
         };
 
         board = Chessboard('board', config);
+        initStockfish();
         updateStatus();
 
-        // Reset Button
-        $('#restartBtn').on('click', function() {
+        // UI Event Listener
+        $modeSelect.on('change', function() {
+            if ($(this).val() === 'ai') {
+                $difficultyRow.show();
+            } else {
+                $difficultyRow.hide();
+            }
+            resetGame();
+        });
+
+        $('#restartBtn').on('click', resetGame);
+
+        function resetGame() {
             game.reset();
             board.start();
             updateStatus();
-        });
+            if ($modeSelect.val() === 'ai') {
+                initStockfish();
+            }
+        }
     </script>
 </body>
 </html>
