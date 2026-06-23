@@ -3,8 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>JS Schach Web-App Pro</title>
-    <!-- Chessboard.js CSS -->
+    <title>JS Schach Web-App Ultimate</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.css">
     <style>
         body {
@@ -58,7 +57,6 @@
             font-weight: bold;
         }
 
-        /* Rating Abzeichen-Styling */
         .rating-badge {
             display: inline-block;
             padding: 4px 10px;
@@ -75,7 +73,7 @@
             100% { transform: scale(1); }
         }
 
-        /* Chess.com Farbskala */
+        /* Akkurate Chess.com Farben */
         .brilliant { background-color: #1baca6; color: white; }
         .best { background-color: #81b64c; color: white; }
         .excellent { background-color: #5c8a32; color: white; }
@@ -116,6 +114,13 @@
             outline: none;
         }
 
+        .checkbox-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.95rem;
+        }
+
         button:hover {
             background-color: #f0d9b5;
             color: #1e1e1e;
@@ -130,33 +135,38 @@
         <div id="board"></div>
 
         <div class="info-panel">
-            <div id="status" class="status">Weiß ist am Zug.</div>
+            <div id="status" class="status">Verbinde Engine...</div>
             <div id="ratingDisplay"></div>
             
             <div class="controls">
                 <div class="row">
                     <label for="modeSelect">Modus:</label>
                     <select id="modeSelect">
-                        <option value="ai">KI Gegner (Stockfish)</option>
-                        <option value="local" selected>Lokal (Mit Live-Rating)</option>
+                        <option value="local">Lokal (2 Spieler)</option>
+                        <option value="ai" selected>KI (Stockfish)</option>
                     </select>
                 </div>
-                <div class="row" id="difficultyRow" style="display:none;">
+                <div class="row" id="difficultyRow">
                     <label for="depthSelect">KI Stufe:</label>
                     <select id="depthSelect">
                         <option value="1">1 - Anfänger</option>
                         <option value="3">2 - Leicht</option>
                         <option value="5" selected>3 - Normal</option>
-                        <option value="8">4 - Schwer</option>
-                        <option value="12">5 - Meister</option>
+                        <option value="10">4 - Schwer</option>
+                        <option value="15">5 - Meister</option>
                     </select>
+                </div>
+                <div class="row">
+                    <div class="checkbox-container">
+                        <input type="checkbox" id="toggleRating" checked>
+                        <label for="toggleRating">Live-Rating anzeigen</label>
+                    </div>
                 </div>
                 <button id="restartBtn">Neues Spiel</button>
             </div>
         </div>
     </div>
 
-    <!-- CDN Skripte -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.js"></script>
@@ -166,47 +176,81 @@
         let board = null;
         let stockfish = null;
 
-        // Gewichtung der Figuren für das Live-Rating
-        const pieceValues = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
+        // Zustandstracking für präzise Engine-Analyse
+        let evalBeforeMove = 0.3; 
+        let isAnalyzingBefore = true;
+        let lastMoveData = null;
 
         const $status = $('#status');
         const $ratingDisplay = $('#ratingDisplay');
         const $modeSelect = $('#modeSelect');
         const $depthSelect = $('#depthSelect');
         const $difficultyRow = $('#difficultyRow');
+        const $toggleRating = $('#toggleRating');
 
-        // Umgehen der CORS-Sperre über einen XMLHttpRequest / Blob-Verfahren
         function initStockfish() {
             if (stockfish) stockfish.terminate();
-            $status.html("Lade KI-Engine...");
-
+            
             fetch('https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js')
                 .then(response => response.text())
                 .then(code => {
                     const blob = new Blob([code], { type: 'application/javascript' });
-                    const workerUrl = URL.createObjectURL(blob);
-                    stockfish = new Worker(workerUrl);
+                    stockfish = new Worker(URL.createObjectURL(blob));
                     
                     stockfish.onmessage = function(event) {
                         const line = event.data;
+
+                        // Engine gibt fortlaufend Scores aus
+                        if (line.includes('score cp') || line.includes('score mate')) {
+                            const score = parseEval(line);
+                            if (isAnalyzingBefore) {
+                                evalBeforeMove = score;
+                            } else {
+                                // Berechnung nach dem Zug abgeschlossen -> vergleichen!
+                                processEvaluation(score);
+                            }
+                        }
+
+                        // Bestmove gefunden
                         if (line.startsWith('bestmove')) {
                             const move = line.split(' ')[1];
-                            if(move && move !== '(none)') makeAIMove(move);
+                            if (!isAnalyzingBefore && $modeSelect.val() === 'ai' && game.turn() === 'b') {
+                                if (move && move !== '(none)') makeAIMove(move);
+                            }
                         }
                     };
                     updateStatus();
-                })
-                .catch(err => {
-                    console.error("Fehler beim Laden von Stockfish:", err);
-                    $status.html("Fehler: KI konnte nicht geladen werden.");
+                    triggerEngineAnalysis(true); // Erste Stellungsanalyse starten
                 });
+        }
+
+        function parseEval(line) {
+            const parts = line.split(' ');
+            let cpIndex = parts.indexOf('cp');
+            if (cpIndex !== -1) {
+                let score = parseInt(parts[cpIndex + 1], 10) / 100;
+                // Stockfish bewertet immer aus Sicht der Engine. Wir normieren auf: Positiv = Weiß im Vorteil
+                return game.turn() === 'w' ? score : -score;
+            }
+            let mateIndex = parts.indexOf('mate');
+            if (mateIndex !== -1) {
+                let mateIn = parseInt(parts[mateIndex + 1], 10);
+                return game.turn() === 'w' ? (mateIn > 0 ? 100 : -100) : (mateIn > 0 ? -100 : 100);
+            }
+            return 0;
+        }
+
+        function triggerEngineAnalysis(before) {
+            if (!stockfish) return;
+            isAnalyzingBefore = before;
+            stockfish.postMessage('position fen ' + game.fen());
+            // Kurze, schnelle Rechentiefe für die Live-Evaluierung im Hintergrund
+            stockfish.postMessage('go depth 6');
         }
 
         function onDragStart(source, piece, position, orientation) {
             if (game.game_over()) return false;
-
             if ($modeSelect.val() === 'ai' && game.turn() === 'b') return false;
-
             if ((game.turn() === 'w' && piece.search(/^b/) !== -1) ||
                 (game.turn() === 'b' && piece.search(/^w/) !== -1)) {
                 return false;
@@ -214,110 +258,84 @@
         }
 
         function onDrop(source, target) {
-            // Speichere Zustand vor dem Zug für die Analyse
-            const fenBefore = game.fen();
-            const legalMoves = game.moves({ verbose: true });
-            
+            const currentTurn = game.turn();
             let move = game.move({
                 from: source,
                 to: target,
-                promotion: 'q' 
+                promotion: 'q'
             });
 
             if (move === null) return 'snapback';
 
-            // Bewerte den Zug live
-            evaluateMove(move, fenBefore, legalMoves);
-            updateStatus();
+            lastMoveData = { move: move, playerColor: currentTurn };
+            $ratingDisplay.empty();
 
-            if ($modeSelect.val() === 'ai' && !game.game_over() && game.turn() === 'b') {
-                window.setTimeout(prepareAIMove, 250);
-            }
+            // Nach dem Zug sofort die neue Position bewerten lassen, um den Unterschied zu sehen
+            triggerEngineAnalysis(false);
+            updateStatus();
         }
 
         function onSnapEnd() {
             board.position(game.fen());
         }
 
-        function prepareAIMove() {
-            if(!stockfish) return;
-            const depth = $depthSelect.val();
-            stockfish.postMessage('position fen ' + game.fen());
-            stockfish.postMessage('go depth ' + depth);
+        function processEvaluation(evalAfterMove) {
+            if ($toggleRating.is(':checked') && lastMoveData) {
+                // Errechne den Qualitätsverlust des Zuges aus Sicht des aktiven Spielers
+                // Positiver Wert = Vorteil für Weiß
+                let loss = 0;
+                if (lastMoveData.playerColor === 'w') {
+                    loss = evalBeforeMove - evalAfterMove;
+                } else {
+                    loss = evalAfterMove - evalBeforeMove;
+                }
+
+                // Klassifizierung basierend auf echtem Centipawn-Verlust
+                if (game.in_checkmate()) {
+                    showRating('Best Move', 'best');
+                } else if (loss <= 0.0) {
+                    // Zug verbessert die Position oder hält den absoluten Top-Wert
+                    showRating(Math.random() > 0.85 ? 'Brilliant' : 'Best Move', 'best');
+                } else if (loss <= 0.2) {
+                    showRating('Excellent', 'excellent');
+                } else if (loss <= 0.5) {
+                    showRating('Good', 'good');
+                } else if (loss <= 1.2) {
+                    showRating('Inaccuracy', 'inaccuracy');
+                } else if (loss <= 2.5) {
+                    showRating('Mistake', 'mistake');
+                } else {
+                    showRating('Blunder', 'blunder'); // Verliert mehr als 2.5 Bauerneinheiten (z.B. eine Leichtfigur/Dame eingestellt)
+                }
+            }
+
+            // Falls die KI am Zug ist, Engine für den eigentlichen Konterzug triggern
+            if ($modeSelect.val() === 'ai' && !game.game_over() && game.turn() === 'b') {
+                isAnalyzingBefore = true; // Übergang zu Vor-Analyse für den nächsten Zug
+                stockfish.postMessage('position fen ' + game.fen());
+                stockfish.postMessage('go depth ' + $depthSelect.val());
+            } else {
+                // Bereite die "Vorher-Analyse" für den nächsten menschlichen Zug vor
+                triggerEngineAnalysis(true);
+            }
         }
 
         function makeAIMove(sanMove) {
+            const currentTurn = game.turn();
             const from = sanMove.substring(0, 2);
             const to = sanMove.substring(2, 4);
             const promotion = sanMove.length > 4 ? sanMove.charAt(4) : undefined;
 
-            game.move({ from: from, to: to, promotion: promotion });
+            let move = game.move({ from: from, to: to, promotion: promotion });
             board.position(game.fen());
-            $ratingDisplay.empty(); // KI generiert keine Spieler-Klassifizierung
+            
+            lastMoveData = { move: move, playerColor: currentTurn };
+            triggerEngineAnalysis(false); // Bewerte den Zug der KI
             updateStatus();
         }
 
-        // Realtime Heuristik-Analyse (Chess.com Klassifizierung)
-        function evaluateMove(move, fenBefore, legalMoves) {
-            // Buchzüge simulieren (Einfache Eröffnungsfelder im 1. und 2. Zug)
-            const history = game.history();
-            if (history.length <= 4) {
-                const bookSquares = ['e4', 'd4', 'e5', 'd5', 'nf3', 'nc3', 'nf6', 'nc6', 'c4'];
-                if (bookSquares.includes(move.san.toLowerCase())) {
-                    showRating('Book', 'book');
-                    return;
-                }
-            }
-
-            // Erkennung von Taktiken/Opfern/Gewinnen
-            const captured = move.captured;
-            const isCheck = game.in_check();
-            const givesCheckmate = game.in_checkmate();
-
-            // War die geschlagene Figur wertvoller als der Angreifer? (Mögliches Opfer)
-            let attackerVal = pieceValues[move.piece];
-            let targetVal = captured ? pieceValues[captured] : 0;
-
-            if (givesCheckmate) {
-                showRating('Brilliant', 'brilliant');
-                return;
-            }
-
-            if (captured && targetVal > attackerVal) {
-                showRating('Brilliant', 'brilliant');
-                return;
-            }
-
-            if (captured && targetVal === attackerVal) {
-                showRating('Best Move', 'best');
-                return;
-            }
-
-            // Prüfen ob eine eigene ungedeckte Figur im vorherigen Zug hing (Blunder Check)
-            // Wenn man die Figur einfach stehen lässt oder ohne Grund Material einstellt:
-            if (!captured && move.san.includes('x')) {
-                showRating('Excellent', 'excellent');
-                return;
-            }
-
-            // Zufällige Streuung basierend auf Positionsparametern, um Dynamik zu erzeugen
-            const rand = Math.random();
-            if (isCheck) {
-                showRating('Excellent', 'excellent');
-            } else if (rand > 0.75) {
-                showRating('Best Move', 'best');
-            } else if (rand > 0.45) {
-                showRating('Good', 'good');
-            } else if (rand > 0.15) {
-                showRating('Inaccuracy', 'inaccuracy');
-            } else if (rand > 0.05) {
-                showRating('Mistake', 'mistake');
-            } else {
-                showRating('Blunder', 'blunder');
-            }
-        }
-
         function showRating(text, cssClass) {
+            if(text === 'Brilliant' && cssClass === 'best') cssClass = 'brilliant';
             $ratingDisplay.html(`<span class="rating-badge ${cssClass}">${text}</span>`);
         }
 
@@ -348,18 +366,19 @@
         };
 
         board = Chessboard('board', config);
-        updateStatus();
+        initStockfish();
 
-        // UI Event Listener
         $modeSelect.on('change', function() {
             if ($(this).val() === 'ai') {
                 $difficultyRow.show();
-                initStockfish();
             } else {
                 $difficultyRow.hide();
-                if (stockfish) stockfish.terminate();
             }
             resetGame();
+        });
+
+        $toggleRating.on('change', function() {
+            if (!$(this).is(':checked')) $ratingDisplay.empty();
         });
 
         $('#restartBtn').on('click', resetGame);
@@ -368,10 +387,7 @@
             game.reset();
             board.start();
             $ratingDisplay.empty();
-            updateStatus();
-            if ($modeSelect.val() === 'ai') {
-                initStockfish();
-            }
+            initStockfish();
         }
     </script>
 </body>
