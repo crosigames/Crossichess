@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JS Schach Web-App</title>
+    <!-- Chessboard.js CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.css">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1e1e1e;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        h1 {
+            margin-bottom: 10px;
+            color: #f0d9b5;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+
+        #board {
+            width: 400px;
+            max-width: 90vw;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+        }
+
+        .info-panel {
+            text-align: center;
+            background: #2d2d2d;
+            padding: 15px;
+            border-radius: 8px;
+            min-width: 250px;
+        }
+
+        .status {
+            font-size: 1.1rem;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+
+        button {
+            background-color: #b58863;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 1rem;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background-color: #f0d9b5;
+            color: #1e1e1e;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Schach</h1>
+        
+        <!-- Das Schachbrett -->
+        <div id="board"></div>
+
+        <!-- Status und Steuerung -->
+        <div class="info-panel">
+            <div id="status" class="status">Weiß ist am Zug.</div>
+            <button id="restartBtn">Neues Spiel</button>
+        </div>
+    </div>
+
+    <!-- Benötigte Skripte (jQuery, Chess.js, Chessboard.js) -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chessboard-js/1.0.0/chessboard-1.0.0.min.js"></script>
+
+    <script>
+        // Initialisierung der Spiel-Logik und des Bretts
+        let game = new Chess();
+        let board = null;
+
+        const $status = $('#status');
+
+        function onDragStart(source, piece, position, orientation) {
+            // Keine Züge erlauben, wenn das Spiel vorbei ist
+            if (game.game_over()) return false;
+
+            // Nur die Figuren der Farbe ziehen lassen, die dran ist
+            if ((game.turn() === 'w' && piece.search(/^b/) !== -1) ||
+                (game.turn() === 'b' && piece.search(/^w/) !== -1)) {
+                return false;
+            }
+        }
+
+        function onDrop(source, target) {
+            // Zug in der Logik validieren
+            let move = game.move({
+                from: source,
+                to: target,
+                promotion: 'q' // Automatische Umwandlung in Dame für die Einfachheit
+            });
+
+            // Illegaler Zug
+            if (move === null) return 'snapback';
+
+            updateStatus();
+        }
+
+        function onSnapEnd() {
+            // Aktualisiert die Position auf dem Brett (wichtig für Rochade/En Passant)
+            board.position(game.fen());
+        }
+
+        function updateStatus() {
+            let status = '';
+            let moveColor = (game.turn() === 'w') ? 'Weiß' : 'Schwarz';
+
+            if (game.in_checkmate()) {
+                status = `Spiel vorbei! ${moveColor} ist im Schachmatt.`;
+            } else if (game.in_draw()) {
+                status = 'Spiel vorbei! Unentschieden (Patt oder Materialmangel).';
+            } else {
+                status = `${moveColor} ist am Zug.`;
+                if (game.in_check()) {
+                    status += ` (${moveColor} steht im Schach!)`;
+                }
+            }
+
+            $status.html(status);
+        }
+
+        // Konfiguration für Chessboard.js
+        const config = {
+            draggable: true,
+            position: 'start',
+            onDragStart: onDragStart,
+            onDrop: onDrop,
+            onSnapEnd: onSnapEnd,
+            pieceTheme: 'https://chessboardjs.com/img/chesspieces/wikipedia/{piece}.png'
+        };
+
+        board = Chessboard('board', config);
+        updateStatus();
+
+        // Reset Button
+        $('#restartBtn').on('click', function() {
+            game.reset();
+            board.start();
+            updateStatus();
+        });
+    </script>
+</body>
+</html>
